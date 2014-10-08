@@ -42,8 +42,7 @@ static void addQueueCurrentTimeIncreasing (struct node* toAdd) {
 	}
 }
 
-static void popQueue (int tprio)
-{
+static void popQueue (int tprio) {
 	struct node* head = Ready[tprio];
 
 	if(head == NULL)
@@ -57,13 +56,13 @@ int fcfs(float currentTime, int tid, int remainingTime, int tprio) {
 	// Acquire mutex.
 	pthread_mutex_lock(&SchedMutex);
 
-//	fprintf(stderr, "t: %f; tid: %d; remainingTime: %d", currentTime, tid, remainingTime);
+	//fprintf(stderr, "t: %f; tid: %d; remainingTime: %d", currentTime, tid, remainingTime);
 
 	// Identify if this is the first time the thread is requesting to be scheduled.
 	// If it does not match with the thread "Executing", then it is.
 	struct node* thread = NULL;
 	if (Executing == NULL || tid != Executing->tid) {
-//		fprintf(stderr, " (first arrival)\n");
+		//fprintf(stderr, " (first arrival)\n");
 		// Create a 'struct node' value to represent this thread.
 		thread = malloc(sizeof(struct node));
 		thread->remainingTime = remainingTime;
@@ -73,7 +72,7 @@ int fcfs(float currentTime, int tid, int remainingTime, int tprio) {
 		pthread_cond_init(&thread->sleep, NULL);
 		addQueueCurrentTimeIncreasing(thread);
 	} else {
-//		fprintf(stderr, "\n");
+		//fprintf(stderr, "\n");
 		thread = Executing;
 		thread->remainingTime = remainingTime;
 	}
@@ -111,9 +110,37 @@ int fcfs(float currentTime, int tid, int remainingTime, int tprio) {
 	return CurrentTime;
 }
 
+int srtf(float currentTime, int tid, int remainingTime, int tprio) {
+
+}
+
+int pbs(float currentTime, int tid, int remainingTime, int tprio) {
+
+}
+
+int mlfq(float currentTime, int tid, int remainingTime, int tprio) {
+
+}
+
+
 void init_scheduler(int schedType) {
+	switch(schedType) {
+		case 0:
+			Scheduler = &fcfs;
+			break;
+		case 1:
+			Scheduler = &srtf;
+			break;
+		case 2:
+			Scheduler = &pbs;
+			break;
+		case 3:
+			Scheduler = &mlfq;
+			break;
+		default:
+			fprintf(stderr, "unknown schedule type.");
+	}
 	pthread_mutex_init(&SchedMutex, NULL);
-	Scheduler = &fcfs;
 }
 
 int scheduleme(float currentTime, int tid, int remainingTime, int tprio) {
