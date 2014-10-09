@@ -2,10 +2,15 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <math.h>
+#include <stdarg.h>
 
 #define MAX_PRIORITY 5
-#define CTRL_WHITE "\033[0;37;40m"
-#define CTRL_YELLOW "\033[0;33;40m"
+//#define CTRL_WHITE "\033[0;37;40m"
+#define CTRL_WHITE "\033[00m"
+#define CTRL_YELLOW "\033[33m"
+// DEBUG_LEVEL is a bitfield. It will mask events corresponding to the level.
+// If you wish to mask all debug prints, set it to 0.
+#define DEBUG_LEVEL 0b0
 
 struct node {
 	int tid;
@@ -23,13 +28,24 @@ float CurrentTime = -1.0f;
 pthread_cond_t WakeUp;
 pthread_mutex_t SchedMutex;
 
+static void debug(int level, const char *fmt, ...) {
+	if (!(level & DEBUG_LEVEL))
+		return;
+	va_list args;
+	va_start(args, fmt);
+	fprintf(stderr, "%s%d: ", CTRL_YELLOW, level);
+	vfprintf(stderr, fmt, args);
+	fprintf(stderr, "%s", CTRL_WHITE);
+	va_end(args);
+}
+
 static void print_ready_queues() {
-	fprintf(stderr, "Ready Queues:\n");
+	debug(1, "Ready Queues:\n");
 	for (int i = 0; i < MAX_PRIORITY; i++) {
-		fprintf(stderr, "   Priority: %d\n", i + 1);
+		debug(1, "   Priority: %d\n", i + 1);
 		struct node* head = Ready[i];
 		while (head != NULL) {
-			fprintf(stderr, "      tid: %d; currentTime: %f; remainingTime: %d\n", head->tid, head->currentTime, head->remainingTime);
+			debug(1, "      tid: %d; currentTime: %f; remainingTime: %d\n", head->tid, head->currentTime, head->remainingTime);
 			head = head -> next;
 		}
 	}
@@ -214,8 +230,8 @@ int pbs(float currentTime, int tid, int remainingTime, int tprio) {
 			break;
 		}
 	}
-	if (CurrentTime == 31) {
-//		print_ready_queues();
+	if (31 <= CurrentTime && CurrentTime <= 33 ) {
+		print_ready_queues();
 	}
 	// TODO: If nothing was signaled, we should increment CurrentTime and go
 	//       back in.
