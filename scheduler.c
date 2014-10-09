@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <stdarg.h>
+#include <limits.h>
 
 #define MAX_PRIORITY 5
 //#define CTRL_WHITE "\033[0;37;40m"
@@ -10,7 +11,8 @@
 #define CTRL_YELLOW "\033[33m"
 // DEBUG_LEVEL is a bitfield. It will mask events corresponding to the level.
 // If you wish to mask all debug prints, set it to 0.
-#define DEBUG_LEVEL 0b0
+//#define DEBUG_LEVEL 0xffffffff
+#define DEBUG_LEVEL 0
 
 struct node {
 	int tid;
@@ -25,7 +27,6 @@ struct node* Ready[MAX_PRIORITY];
 struct node* Executing;
 int (*Scheduler)(float, int, int, int);
 float CurrentTime = -1.0f;
-pthread_cond_t WakeUp;
 pthread_mutex_t SchedMutex;
 
 static void debug(int level, const char *fmt, ...) {
@@ -33,9 +34,11 @@ static void debug(int level, const char *fmt, ...) {
 		return;
 	va_list args;
 	va_start(args, fmt);
-	fprintf(stderr, "%s%d: ", CTRL_YELLOW, level);
+
+	// Provide color coding.
+	fprintf(stderr, "\033[%dm", 31 + (int) log2(level));
 	vfprintf(stderr, fmt, args);
-	fprintf(stderr, "%s", CTRL_WHITE);
+	fprintf(stderr, CTRL_WHITE);
 	va_end(args);
 }
 
@@ -198,6 +201,8 @@ int srtf(float currentTime, int tid, int remainingTime, int tprio) {
 int pbs(float currentTime, int tid, int remainingTime, int tprio) {
 	pthread_mutex_lock(&SchedMutex);
 
+	debug(8, "gaining mutex: %d\n", tid);
+	debug(4, "t: %f; tid: %d; remainingTime: %d", currentTime, tid, remainingTime);
 	struct node* thread = NULL;
 	if (Executing==NULL || Executing->tid != tid) {
 		// Create a 'struct node' value to represent this thread.
@@ -208,36 +213,82 @@ int pbs(float currentTime, int tid, int remainingTime, int tprio) {
 		thread->tprio = tprio - 1;
 		pthread_cond_init(&thread->sleep, NULL);
 		addQueueCurrentTimeIncreasing(thread);
+		debug(4, " (first arrival)\n");
 	} else {
 		thread = Executing;
 		thread->remainingTime = remainingTime;
-		thread->currentTime = currentTime;
+		thread->currentTime = CurrentTime + 1;
 		bubbleSortCurrentTime(thread->tprio);
+		debug(4, "\n");
 	}
 
 	if (remainingTime == 0) {
 		Executing = NULL;
 		removeFromQueue(thread);
 	}
+	print_ready_queues();
 	// Check to see if the current thread is the one that should be running. If
 	// not, send a signal to the one that should be running, and go to sleep.
-	for (int i = 0; i < MAX_PRIORITY; i++) {
-		if (Ready[i] != NULL && Ready[i]->currentTime <= CurrentTime + 1) {
-			if (Ready[i] != thread || Executing != thread) { // wait if another thread is already running or this thread is not the next in line.
-				pthread_cond_signal(&Ready[i]->sleep);
-				pthread_cond_wait(&thread->sleep, &SchedMutex);
+	int flag = 0;
+	do {
+		debug(16, "CurrentTime: %f\n", CurrentTime);
+		flag = 0;
+		for (int i = 0; i < MAX_PRIORITY; i++) {
+			if (Ready[i] != NULL && Ready[i]->currentTime <= CurrentTime + 1) {
+				if (Ready[i] != thread || (Executing != thread && Executing != NULL)) { // wait if another thread is already running or this thread is not the next in line.
+					pthread_cond_signal(&Ready[i]->sleep);
+					if (remainingTime == 0) {
+						debug(8, "releasing mutex (totally done): %d\n", tid);
+						pthread_mutex_unlock(&SchedMutex);
+						return 0;
+					}
+					debug(8, "releasing mutex (yielding): %d\n", tid);
+					pthread_cond_wait(&thread->sleep, &SchedMutex);
+					debug(8, "gaining mutex (cond signal): %d\n", tid);
+				}
+				flag = 1;
+				break;
 			}
+		}
+		if (flag == 0) {
+			debug(2, "%p %p %p %p %p\n", Ready[0], Ready[1], Ready[2], Ready[3], Ready[4]);
+			int i;
+			for (i = 0; i < MAX_PRIORITY; i++) {
+				if (Ready[i] != NULL) {
+					break;
+				}
+			}
+			if (i == 5) {
+				debug(2, "All threads finished.\n");
+				break;
+			}
+			debug(2, "Threads left to finish. Current Time: %f\n", CurrentTime);
+			debug(16, "CurrentTime: %f\n", CurrentTime);
+			print_ready_queues();
+		} else {
+			debug(2, "broke out of PBS loop.\n");
+//			print_ready_queues();
 			break;
 		}
-	}
-	if (31 <= CurrentTime && CurrentTime <= 33 ) {
-		print_ready_queues();
-	}
-	// TODO: If nothing was signaled, we should increment CurrentTime and go
-	//       back in.
+		// If the code reaches this point, then there are still threads left to
+		// execute, but their starting time is after CurrentTime. Increment
+		// CurrentTime by the best value we can, then repeat.
+		flag = INT_MAX;
+		for (int i = 0; i < MAX_PRIORITY; i++) {
+			if (Ready[i] != NULL && Ready[i]->currentTime - CurrentTime - 1 < flag) {
+				flag = (int) ceil(Ready[i]->currentTime - CurrentTime - 1.0f);
+			}
+		}
+		debug(2, "Incrementing CurrentTime by: %d\n", flag);
+		CurrentTime += (float) flag;
+		debug(16, "CurrentTime: %f\n", CurrentTime);
+		flag = 0;
+	} while (!flag);
 	Executing = thread;
 
 	CurrentTime++;
+	debug(16, "CurrentTime: %f\n", CurrentTime);
+	debug(8, "releasing mutex (finished): %d\n", tid);
 	pthread_mutex_unlock(&SchedMutex);
 
 	return CurrentTime;
