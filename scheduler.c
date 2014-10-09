@@ -3,6 +3,10 @@
 #include <stdlib.h>
 #include <math.h>
 
+#define MAX_PRIORITY 5
+#define CTRL_WHITE "\033[0;37;40m"
+#define CTRL_YELLOW "\033[0;33;40m"
+
 struct node {
 	int tid;
 	int remainingTime;
@@ -12,13 +16,24 @@ struct node {
 	struct node* next;
 };
 
-struct node* Ready[5];
+struct node* Ready[MAX_PRIORITY];
 struct node* Executing;
 int (*Scheduler)(float, int, int, int);
 float CurrentTime = -1.0f;
 pthread_cond_t WakeUp;
 pthread_mutex_t SchedMutex;
 
+static void print_ready_queues() {
+	fprintf(stderr, "Ready Queues:\n");
+	for (int i = 0; i < MAX_PRIORITY; i++) {
+		fprintf(stderr, "   Priority: %d\n", i + 1);
+		struct node* head = Ready[i];
+		while (head != NULL) {
+			fprintf(stderr, "      tid: %d; currentTime: %f; remainingTime: %d\n", head->tid, head->currentTime, head->remainingTime);
+			head = head -> next;
+		}
+	}
+}
 
 static void addQueueCurrentTimeIncreasing (struct node* toAdd) {
 	struct node* head = Ready[toAdd->tprio];
@@ -50,6 +65,56 @@ static void popQueue (int tprio) {
 
 	Ready[tprio] = head->next;
 	free(head);
+}
+
+static void removeFromQueue (struct node* toRemove) {
+	struct node* head = Ready[toRemove->tprio], *prev = head;
+
+	if(head == NULL)
+		return;
+
+	while (head != NULL && head != toRemove) {
+		prev = head;
+		head = head->next;
+	}
+	if (prev == head) {
+		if (head) {
+			Ready[toRemove->tprio] = head->next;
+		} else {
+			Ready[toRemove->tprio] = NULL;
+		}
+	} else {
+		if (head) {
+			prev->next = head->next;
+		}
+	}
+	free(toRemove);
+}
+
+static void bubbleSortCurrentTime(int queueIndex) {
+	struct node* head = Ready[queueIndex], *prev = head, *next = head->next;
+	while (next != NULL) {
+		if (head->currentTime > next->currentTime) {
+			if (prev == head) {
+				// Current order is head -> next
+				// Should be next -> head.
+				head->next = next->next;
+				next->next = head;
+				Ready[queueIndex] = next;
+			} else {
+				// Current order is prev -> head -> next
+				// Should be prev -> next -> head.
+				head->next = next->next;
+				next->next = head;
+				prev->next = next;
+			}
+		} else {
+			break;
+		}
+		prev = head;
+		head = next;
+		next = head -> next;
+	}
 }
 
 int fcfs(float currentTime, int tid, int remainingTime, int tprio) {
@@ -115,7 +180,51 @@ int srtf(float currentTime, int tid, int remainingTime, int tprio) {
 }
 
 int pbs(float currentTime, int tid, int remainingTime, int tprio) {
+	pthread_mutex_lock(&SchedMutex);
 
+	struct node* thread = NULL;
+	if (Executing==NULL || Executing->tid != tid) {
+		// Create a 'struct node' value to represent this thread.
+		thread = malloc(sizeof(struct node));
+		thread->remainingTime = remainingTime;
+		thread->tid = tid;
+		thread->currentTime = currentTime;
+		thread->tprio = tprio - 1;
+		pthread_cond_init(&thread->sleep, NULL);
+		addQueueCurrentTimeIncreasing(thread);
+	} else {
+		thread = Executing;
+		thread->remainingTime = remainingTime;
+		thread->currentTime = currentTime;
+		bubbleSortCurrentTime(thread->tprio);
+	}
+
+	if (remainingTime == 0) {
+		Executing = NULL;
+		removeFromQueue(thread);
+	}
+	// Check to see if the current thread is the one that should be running. If
+	// not, send a signal to the one that should be running, and go to sleep.
+	for (int i = 0; i < MAX_PRIORITY; i++) {
+		if (Ready[i] != NULL && Ready[i]->currentTime <= CurrentTime + 1) {
+			if (Ready[i] != thread || Executing != thread) { // wait if another thread is already running or this thread is not the next in line.
+				pthread_cond_signal(&Ready[i]->sleep);
+				pthread_cond_wait(&thread->sleep, &SchedMutex);
+			}
+			break;
+		}
+	}
+	if (CurrentTime == 31) {
+//		print_ready_queues();
+	}
+	// TODO: If nothing was signaled, we should increment CurrentTime and go
+	//       back in.
+	Executing = thread;
+
+	CurrentTime++;
+	pthread_mutex_unlock(&SchedMutex);
+
+	return CurrentTime;
 }
 
 int mlfq(float currentTime, int tid, int remainingTime, int tprio) {
