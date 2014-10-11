@@ -139,14 +139,15 @@ static void bubbleSortCurrentTime(int queueIndex) {
 int fcfs(float currentTime, int tid, int remainingTime, int tprio) {
 	// Acquire mutex.
 	pthread_mutex_lock(&SchedMutex);
+	debug(2, "Gaining mutex [%d] (scheduleme called)\n", tid);
 
-	//fprintf(stderr, "t: %f; tid: %d; remainingTime: %d", currentTime, tid, remainingTime);
+	debug(1, "t: %f; tid: %d; remainingTime: %d", currentTime, tid, remainingTime);
 
 	// Identify if this is the first time the thread is requesting to be scheduled.
 	// If it does not match with the thread "Executing", then it is.
 	struct node* thread = NULL;
 	if (Executing == NULL || tid != Executing->tid) {
-		//fprintf(stderr, " (first arrival)\n");
+		debug(1, " (first arrival)\n");
 		// Create a 'struct node' value to represent this thread.
 		thread = malloc(sizeof(struct node));
 		thread->remainingTime = remainingTime;
@@ -156,7 +157,7 @@ int fcfs(float currentTime, int tid, int remainingTime, int tprio) {
 		pthread_cond_init(&thread->sleep, NULL);
 		addQueueCurrentTimeIncreasing(thread);
 	} else {
-		//fprintf(stderr, "\n");
+		debug(1, "\n");
 		thread = Executing;
 		thread->remainingTime = remainingTime;
 	}
@@ -166,7 +167,9 @@ int fcfs(float currentTime, int tid, int remainingTime, int tprio) {
 	// sleeping state.
 	if (Ready[0]->tid != tid) {
 		pthread_cond_signal(&Ready[0]->sleep);
+		debug(2, "Releasing mutex [%d] (sleeping)\n", tid);
 		pthread_cond_wait(&thread->sleep, &SchedMutex);
+		debug(2, "Gaining mutex [%d] (signaled)\n", tid);
 	}
 
 	// If this thread is done executing, remove it from the mix.
@@ -183,6 +186,7 @@ int fcfs(float currentTime, int tid, int remainingTime, int tprio) {
 		}
 	}
 	Executing = thread;
+	debug(2, "Releasing mutex [%d] (scheduleme finished)\n", tid);
 	pthread_mutex_unlock(&SchedMutex);
 
 	// If this thread is done executing, send in a signal to the next thread in line.
@@ -267,7 +271,6 @@ int pbs(float currentTime, int tid, int remainingTime, int tprio) {
 			print_ready_queues();
 		} else {
 			debug(2, "broke out of PBS loop.\n");
-//			print_ready_queues();
 			break;
 		}
 		// If the code reaches this point, then there are still threads left to
