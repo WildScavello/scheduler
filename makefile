@@ -26,6 +26,8 @@ test-mlfq:
 	./a.out 3 p1_test/TestInputs/input_2 | diff p1_test/TestOutputs/base_input_2_mlfq_output - || echo 'mismatch'
 	./a.out 3 p1_test/TestInputs/input_3 | diff p1_test/TestOutputs/base_input_3_mlfq_output - || echo 'mismatch'
 
+package:
+	tar czf 'Burlew-Seamus.tgz' scheduler.c overview.txt
 
 project1.o: project1.c
 	gcc $(CFLAGS) -c $<
