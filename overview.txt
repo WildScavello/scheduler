@@ -1,0 +1,69 @@
+Team Members:
+	Jackson Burlew
+	Seamus Hayes
+
+Contribution Breakdown by Function Implementation
+
+Primary functions are:
+	fcfs - Combined Effort
+	srtf - Seamus
+	pbs  - Jackson
+	mlfq - Jackson
+Our auxiliary functions are as follows:
+	init_scheduler                    - Jackson
+	scheduleme                        - Jackson
+	addQueueCurrentTimeIncreasing     - Seamus
+	sortQueueRemainingTimeIncreasing  - Seamus
+	addQueueRemainingTimeIncreasing   - Seamus
+	inQueue                           - Seamus
+	popQueue                          - Seamus
+	removeFromQueue                   - Jackson
+	bubbleSortCurrentTime             - Jackson
+
+
+
+Project Overview:
+
+Global Variables
+	struct node* Ready[5]: each queue corresponds to a priority level where
+	  Ready[0] is the highest priority and Ready[4] is the lowest. In cases
+	  where only one ready queue is needed (fcfs, srtf), only Ready[0] is used.
+	struct node* Executing: This value contains the currently executing thread.
+	  When a thread enters the scheduleme function, if it matches Executing,
+	  then we don't have to recreate the thread value and add it to the Ready
+	  queues again.
+	int (*Scheduler)(float, int, int, int): The current active function to be
+	  called when scheduleme is called. It will equal &fcfs, &srtf, &pbs, or
+	  &mlfq.
+	float CurrentTime: A variable to hold the current time as far as the
+	  scheduler is concerned. For input_0, the currentTime values can be way
+	  off, so we have to keep a reference to the last correct one.
+	pthread_mutex_t SchedMutex: A mutex which every thread must obtain to enter
+	  the scheduling function.
+
+Trends in all function implementations:
+	Mutex Locking: All threads must obtain the mutex in order to enter the
+	  scheduling operation. They will relinquish the mutex if it's not their
+	  turn or they are exiting to execute.
+	First Thread Arrival: we use Executing to determine if the thread is
+	  currently executing or if it is the second/third/fourth/... time it is
+	  returning to the scheduleme function.
+	Preempting Policy: when a new thread arrives which should preempt the
+	  currently executing thread, we must wait until the other thread returns.
+	  As such, the current thread must yield. The other thread, when it returns
+	  will check the criteria to identify if it should still be running. If not,
+	  it signals the thread which should be running and goes to sleep.
+
+
+fcfs: A Ready queue sorted by increasing currentTime is kept for all threads.
+  The next thread to run is the first one in the thread list.
+srtf: We keep the Ready[0] queue sorted by shortest remaining time first
+  (primarily) and the currentTime (secondarily). The next thread to run will
+  be at the head of the list.
+pbs: The priority queues are sorted by their currentTime which is when the
+  thread last called scheduleme, not when they first called scheduleme. The next
+  thread to run is the head of Ready[0] if it exists, otherwise Ready[1], etc.
+mlfq: The priority queues are sorted by the time at which they first called
+  scheduleme. A thread's timeQuantum decrements each time it runs, and if it
+  reaches 0, it will be moved to a lower priority.
+  
