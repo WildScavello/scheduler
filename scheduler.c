@@ -30,6 +30,13 @@ int (*Scheduler)(float, int, int, int);
 float CurrentTime = -1.0f;
 pthread_mutex_t SchedMutex;
 
+/** void debug(int level, const char *fmt, ...)
+ *    Input: level is a power-of-two value representing the debug level.
+ *           fmt is a format string.
+ *           ... are all other arguments to the format string.
+ *   Output: no output, but the formatted string will be colored and printed to
+ *             the console if (DEBUG_LEVEL & level) is non-zero.
+ */
 static void debug(int level, const char *fmt, ...) {
 	if (!(level & DEBUG_LEVEL))
 		return;
@@ -43,6 +50,11 @@ static void debug(int level, const char *fmt, ...) {
 	va_end(args);
 }
 
+/** void print_ready_queues()
+ *    Input: void
+ *   Output: All items in the Ready[i] linked lists will be printed to the
+ *             screen via debug(1, "...", ...).
+ */
 static void print_ready_queues() {
 	debug(1, "Ready Queues:\n");
 	for (int i = 0; i < MAX_PRIORITY; i++) {
@@ -55,6 +67,12 @@ static void print_ready_queues() {
 	}
 }
 
+/** void addQueueCurrentTimeIncreasing (struct node* toAdd)
+ *    Input: toAdd is the node to add to the singly-linked queue.
+ *   Output: toAdd will be added to the ready queue Ready[toAdd->tprio] such
+ *             that toAdd->prev->currentTime <= toAdd->currentTime and
+ *             toAdd->currentTime <= toAdd->next->currentTime.
+ */
 static void addQueueCurrentTimeIncreasing (struct node* toAdd) {
 	struct node* head = Ready[toAdd->tprio];
 	struct node* prev = head;
@@ -77,10 +95,15 @@ static void addQueueCurrentTimeIncreasing (struct node* toAdd) {
 	}
 }
 
+/** void sortQueueRemainingTimeIncreasing (void)
+ *    Input: void
+ *   Output: bubble sorts all Ready[i] queues from least to greatest on member
+ *             'currentTime'.
+ */
 static void sortQueueRemainingTimeIncreasing () {
 	int i;
 	int flag = 0;
-	for(i = 0; i < 5; i++)
+	for(i = 0; i < MAX_PRIORITY; i++)
 	{
 		while(!flag)
 		{
@@ -143,6 +166,11 @@ static void sortQueueRemainingTimeIncreasing () {
 	}
 }
 
+/** void addQueueRemainingTimeIncreasing (struct node* toAdd)
+ *    Input: toAdd is a node to be inserted.
+ *   Output: toAdd will be inserted in Ready[toAdd->tprio] in ascending order by
+ *             member 'remainingTime'.
+ */
 static void addQueueRemainingTimeIncreasing (struct node* toAdd) {
 	struct node* head = Ready[toAdd->tprio];
 	struct node* prev = head;
@@ -172,9 +200,13 @@ static void addQueueRemainingTimeIncreasing (struct node* toAdd) {
 	}
 }
 
+/** int inQueue (int tid)
+ *    Input: tid is the id of the thread.
+ *   Output: 1 if tid is found in any of the five Ready queues, 0 otherwise.
+ */
 static int inQueue (int tid) {
 	int i;
-	for(i = 0; i < 5; i++)
+	for(i = 0; i < MAX_PRIORITY; i++)
 	{
 		struct node *head = Ready[i];
 
@@ -188,6 +220,10 @@ static int inQueue (int tid) {
 	return 0;
 }
 
+/** void popQueue (int tprio)
+ *    Input: tprio is the queue from which to remove the front element.
+ *   Output: Ready[tprio] will have its first element removed from it.
+ */
 static void popQueue (int tprio) {
 	struct node* head = Ready[tprio];
 
@@ -198,6 +234,11 @@ static void popQueue (int tprio) {
 	free(head);
 }
 
+/** void removeFromQueue (struct node* toRemove)
+ *    Input: toRemove is a node to be removed.
+ *   Output: if toRemove is found in the Ready[toRemove->tprio] queue, it will
+ *             be removed from it.
+ */
 static void removeFromQueue (struct node* toRemove) {
 	struct node* head = Ready[toRemove->tprio], *prev = head;
 
@@ -221,6 +262,14 @@ static void removeFromQueue (struct node* toRemove) {
 	}
 }
 
+/** void bubbleSortCurrentTime(int queueIndex)
+ *    Input: queueIndex is the index of the queue to sort. 0 <= queueIndex < 5.
+ *   Output: Ready[queueIndex] will have one pass of BubbleSort move from left
+ *             to right to sort the queue. Note that this means that only one
+ *             element can be out of order, and it must be greater than its
+ *             surrounding indices (that is, currentTime should have increased
+ *             since the last call to this sort).
+ */
 static void bubbleSortCurrentTime(int queueIndex) {
 	struct node* head = Ready[queueIndex], *prev = head, *next = head->next;
 	while (next != NULL) {
@@ -444,7 +493,7 @@ int pbs(float currentTime, int tid, int remainingTime, int tprio) {
 					break;
 				}
 			}
-			if (i == 5) {
+			if (i == MAX_PRIORITY) {
 				debug(2, "All threads finished.\n");
 				break;
 			}
@@ -518,8 +567,10 @@ int mlfq(float currentTime, int tid, int remainingTime, int tprio) {
 	} else if (thread->timeQuantum <= 0) {
 		debug(16, "Exceeded time quantum for thread %d\n", tid);
 		removeFromQueue(thread);
-		thread->tprio++;
+		if (thread->tprio < MAX_PRIORITY - 1)
+			thread->tprio++;
 		thread->timeQuantum = thread->tprio * 5 + 5;
+		thread->currentTime = CurrentTime + 1;
 		addQueueCurrentTimeIncreasing(thread);
 		print_ready_queues();
 		Executing = NULL;
